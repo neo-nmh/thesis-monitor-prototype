@@ -2,6 +2,8 @@
 
 A login-free internal tool for AMPB (US AI / US Non-AI) and SnT (FX / rates).
 
+For standalone Cloudflare Workers deployment from GitHub, follow [DEPLOY.md](DEPLOY.md). One Worker serves the frontend and API; one D1 database stores theses and usage. No separate frontend host or database service is needed. The original Sites commands and configuration are retained; use the `:cloudflare` scripts for your own Cloudflare account.
+
 ## Interface
 
 The homepage contains clickable thesis cards, Add thesis, filters, and a small usage control. Each card shows its author and sequence number, title, and subthesis status icons. Research is started by the green search button. Filters cover desk, time horizon, status and date order.
