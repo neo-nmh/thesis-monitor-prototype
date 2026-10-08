@@ -8,7 +8,7 @@ import { checkDeadline } from '@/lib/timing';
 
 type FormInput=Pick<Thesis,'author'|'title'|'team'|'desk'|'instrument'|'direction'|'horizon'|'summary'|'valuation'|'tradePlan'|'groups'>;
 type Usage={estimated:number;reserved:number;limit:number;remainingResearches:number};
-type Activity={id:string;stage:string;reasoning:string;searches:string[];sources:{text:string;url:string}[]};
+type Activity={id:string;stage:string;searches:string[];sources:{text:string;url:string}[]};
 const statuses:Record<CheckStatus,string>={true:'Verified',unclear:'Unclear',false:'False',pending:'Pending'};
 const date=(s:string)=>new Date(s).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
 class FormError extends Error { constructor(message:string,public issues:FieldIssue[]=[]){super(message);} }
@@ -40,13 +40,13 @@ export default function Home(){
  async function remove(t:Thesis){await api(`/api/theses/${t.id}`,'DELETE',{version:t.version});setTheses(p=>p.filter(x=>x.id!==t.id));setForm(null);open(null);}
  async function manual(t:Thesis,c:ThesisCheck,s:CheckStatus,note:string){const result=await api(`/api/theses/${t.id}`,'PATCH',{version:t.version,action:'manual',checkId:c.id,status:s,note});update(result);}
  async function research(t:Thesis){
-  if(activity)return;setError('');setRejected(null);setActivity({id:t.id,stage:'Checking thesis fields…',reasoning:'',searches:[],sources:[]});
+  if(activity)return;setError('');setRejected(null);setActivity({id:t.id,stage:'Checking thesis fields…',searches:[],sources:[]});
   let received=false;
   try{
    const r=await fetch(`/api/theses/${t.id}/research`,{method:'POST'});if(!r.ok){const b:any=await r.json();throw new Error(b.error||'Research failed.');}if(!r.body)throw new Error('No research stream was returned.');
    const reader=r.body.getReader(),decoder=new TextDecoder();let buffer='';
    function event(raw:string){if(!raw.trim())return;const e=JSON.parse(raw);
-    if(e.type==='progress'){const p=e.event as ResearchProgress;setActivity(a=>{if(!a)return a;if(p.kind==='stage')return {...a,stage:p.text};if(p.kind==='reasoning')return {...a,reasoning:p.text};if(p.kind==='search')return {...a,searches:[...a.searches,p.text].slice(-8)};if(p.kind==='source'&&p.url&&!a.sources.some(s=>s.url===p.url))return {...a,sources:[...a.sources,{text:p.text,url:p.url}].slice(-16)};return a;});}
+    if(e.type==='progress'){const p=e.event as ResearchProgress;setActivity(a=>{if(!a)return a;if(p.kind==='stage')return {...a,stage:p.text};if(p.kind==='reasoning'){const heading=[...p.text.matchAll(/\*\*([^*]+)\*\*/g)].at(-1)?.[1].replace(/\s+/g,' ').trim();return heading?{...a,stage:heading.length>80?heading.slice(0,77).replace(/\s+\S*$/,'')+'…':heading}:a;}if(p.kind==='search')return {...a,searches:[...a.searches,p.text].slice(-8)};if(p.kind==='source'&&p.url&&!a.sources.some(s=>s.url===p.url))return {...a,sources:[...a.sources,{text:p.text,url:p.url}].slice(-16)};return a;});}
     else if(e.type==='result'){received=true;update(e.thesis);}
     else if(e.type==='rejected'){received=true;setRejected({id:t.id,issues:e.issues});setError(e.error);}
     else if(e.type==='error')throw new Error(e.error);
@@ -74,7 +74,7 @@ export default function Home(){
  </main>;
 }
 function ActivityPanel({activity:a}:{activity:Activity}){
- return <section className="activity-panel" aria-live="polite"><div className="activity-stage"><LoaderCircle size={17} className="spin"/>{a.stage}</div>{a.reasoning&&<div className="activity-reasoning">{a.reasoning.split(/(\*\*[^*]+\*\*)/).map((part,i)=>part.startsWith('**')?<strong key={i}>{part.slice(2,-2)}</strong>:<span key={i}>{part}</span>)}</div>}{a.searches.length>0&&<div className="activity-searches">{a.searches.map((q,i)=><div key={i}><Search size={13}/>{q}</div>)}</div>}{a.sources.length>0&&<div className="activity-sources">{a.sources.map(s=><a key={s.url} href={s.url} target="_blank" rel="noopener noreferrer">{s.text}</a>)}</div>}</section>;
+ return <section className="activity-panel" aria-live="polite"><div className="activity-stage"><LoaderCircle size={17} className="spin"/>{a.stage}</div>{a.searches.length>0&&<div className="activity-searches">{a.searches.map((q,i)=><div key={i}><Search size={13}/>{q}</div>)}</div>}{a.sources.length>0&&<div className="activity-sources">{a.sources.map(s=><a key={s.url} href={s.url} target="_blank" rel="noopener noreferrer">{s.text}</a>)}</div>}</section>;
 }
 function CheckRow({check:c,onManual}:{check:ThesisCheck;onManual:(s:CheckStatus,note:string)=>Promise<void>}){
  const [expanded,setExpanded]=useState(false),[status,setStatus]=useState(c.status),[note,setNote]=useState(''),[saving,setSaving]=useState(false),[error,setError]=useState('');

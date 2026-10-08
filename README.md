@@ -14,7 +14,7 @@ React / Vinext → API routes → Cloudflare D1. Native fetch calls OpenAI Respo
 
 Submission and editing run a small structured-output input check. Placeholder, misplaced, incomplete or inappropriate input returns field-specific feedback without saving. Optional fields may remain empty. Research also checks older submissions before starting web research.
 
-Research uses required live `web_search`, low reasoning effort, at most four web tool calls, an 8,000-output-token cap and a 150-second timeout. Public reasoning summaries, actual search queries and source metadata stream to the UI. Raw reasoning is never requested or forwarded. All non-manual subtheses must appear exactly once. Evidence links must match search or citation metadata; unsupported true/false results become unclear. This validates traceability, not the correctness of a model's interpretation.
+Research uses required live `web_search`, low reasoning effort, at most four web tool calls, an 8,000-output-token cap and a 150-second timeout. The UI shows a single short progress line using public reasoning-summary headings, with actual search queries and source links underneath. Long reasoning paragraphs are not displayed. Raw reasoning is never requested or forwarded. All non-manual subtheses must appear exactly once. Evidence links must match search or citation metadata; unsupported true/false results become unclear. This validates traceability, not the correctness of a model's interpretation.
 
 ## Dates and the pending rule
 
