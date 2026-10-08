@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "traders-ust-thesis-monitor",
+  "name": "thesis-monitor-prototype",
   "main": "vinext/server/fetch-handler",
   "compatibility_date": "2026-05-15",
   "compatibility_flags": ["nodejs_compat"],
@@ -12,7 +12,7 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "thesis-monitor",
+      "database_name": "thesis-monitor-prototype",
       // Replace with the ID of your own Cloudflare D1 database before deployment.
       "database_id": "00000000-0000-4000-8000-000000000000",
       "migrations_dir": "drizzle"
