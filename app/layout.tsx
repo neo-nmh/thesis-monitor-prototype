@@ -2,12 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Thesis Monitor · Traders@UST",
-  description: "A shared research journal for better investment thinking.",
-  icons: {
-    icon: "/favicon.svg",
-    shortcut: "/favicon.svg",
-  },
+  title: "Thesis monitor",
+  description: "Trade theses and sourced subthesis checks.",
+
 };
 
 export default function RootLayout({

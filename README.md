@@ -1,55 +1,52 @@
-# Traders@UST thesis monitor
+# Thesis monitor
 
-A login-free, shared prototype for writing trade theses, checking explicit propositions against web evidence, and recording what traders learn.
+A login-free internal tool for AMPB (US AI / US Non-AI) and SnT (FX / rates).
 
-## What it does
+## Interface
 
-- AMPB desks (US AI, US Non-AI, Seeds, Infinity); SnT desks (USDJPY, USDKRW, USDSGD, US/Japan rates); Quant and AI research.
-- Natural-language trade, reasoning, market view, variant view, catalysts, risks, invalidation, valuation, and implementation fields.
-- Numeric, qualitative and manual checks. Event windows can be expressed directly in a check or catalyst timing field.
-- On-demand GPT-5 nano Responses API research using live `web_search` and strict JSON Schema output.
-- True / false / unclear / pending check states; exact source links, dated observations, and check-level explanations.
-- Immutable review snapshots, thesis revision snapshots, manual observations, reflections, archive/restore, search/filter, JSON export.
-- Shared Cloudflare D1 persistence. No accounts, background research, trading, price feed, agent framework, or valuation engine.
+The homepage contains clickable thesis cards, Add thesis, filters, and a small usage control. Each card shows its author and sequence number, title, and subthesis status icons. Research is started by the green search button. Filters cover desk, time horizon, status and date order.
 
-## Architecture
+The detail page contains two tabs: Thesis monitor (subtheses and compact source dropdowns) and Your thesis (the submitted fields, preserving their text and line breaks). Editing includes a separate deletion confirmation. No sidebar, dashboard statistics, evidence feed, journal, reflections, learning panels, history tabs, archive controls, or exports.
 
-React UI (`app/page.tsx`) → small API routes → Cloudflare D1. One prompt + structured output lives in `lib/research.ts`. Vinext/Vite provides the Sites-compatible server build.
+## Research and validation
 
-The API key exists only in the hosted `OPENAI_API_KEY` runtime secret. It is never returned to clients or bundled. Set it through the hosting provider's environment settings. `.env.example` documents the name for other local deployments; never commit a real key.
+React / Vinext → API routes → Cloudflare D1. Native fetch calls OpenAI Responses with `gpt-5-nano`; no agent framework or SDK is needed.
 
-This intentionally has no login or ownership boundaries. Everyone with access to the site shares the same records and research allowance. It is a club prototype, not a private multi-tenant product.
+Submission and editing run a small structured-output input check. Placeholder, misplaced, incomplete or inappropriate input returns field-specific feedback without saving. Optional fields may remain empty. Research also checks older submissions before starting web research.
 
-## Cost controls
+Research uses required live `web_search`, low reasoning effort, at most four web tool calls, an 8,000-output-token cap and a 150-second timeout. Public reasoning summaries, actual search queries and source metadata stream to the UI. Raw reasoning is never requested or forwarded. All non-manual subtheses must appear exactly once. Evidence links must match search or citation metadata; unsupported true/false results become unclear. This validates traceability, not the correctness of a model's interpretation.
 
-The app permanently reserves $0.25 per research attempt from a $12 allowance stored in D1 (48 attempts maximum). Failed and conflicted attempts keep the reservation because they may have incurred API cost. One global review runs at a time, with a one-minute cooldown; stale locks expire after three minutes. The request uses low reasoning effort, an 8,000-output-token cap, a four-web-tool-call budget, and a 150-second timeout. No automatic retries or automatic research.
+## Dates and the pending rule
 
-The UI also displays estimated actual charges, using $0.05/M input tokens, $0.40/M output tokens, and $0.01 per returned web tool call. Estimates include returned token usage but are not a billing report; the OpenAI project budget remains authoritative. Timeout responses may have incurred unreported cost; the reservation remains in place. Rates were checked against official OpenAI docs on 7 October 2026.
+`lib/timing.ts` resolves dates from subthesis text, explicit deadlines, catalyst timing and applicable trade horizons. It supports ISO dates, named months/days, quarters and relative day/week/month/year windows. Month-only deadlines end on the last day of that month. Relative windows are anchored to thesis creation.
 
-- https://developers.openai.com/api/docs/models/gpt-5-nano
-- https://developers.openai.com/api/docs/guides/tools-web-search
-- https://developers.openai.com/api/docs/pricing
+The observation window must end before a forecast is judged true or false. A server-side rule overrides every premature model status, including unclear, to pending. It also corrects earlier stored premature results when loading them, leaving the submitted text and sources intact. An old pre-deadline review cannot become a valid final verdict merely because time passes: another research run is required. Current/latest observations remain independently assessable. Ambiguous calendars are left to sourced research; the model can still misinterpret language or evidence.
 
-## Evidence integrity
+Regression tests use the five exact USDJPY propositions reported by the user, including March 2027 and the next three monthly releases. They verify all four possible model verdicts, missing sources, deadline rollover, historical/current claims, and old results.
 
-Research must complete a web search. Every expected non-manual check must appear exactly once. Evidence URLs must occur in the API's actual search-source or citation metadata; unsupported URLs are dropped, and unsupported true/false decisions become unclear. This establishes source traceability, not source accuracy: traders should inspect the linked source and its date. Model interpretation and date errors remain possible. No confidence percentage is invented.
+## Persistence and cost
 
-True risk and invalidation conditions are adverse. Check coverage is not a conviction score. Editing resets current check states and stores the previous thesis; prior review labels and evidence are preserved. Version checks prevent concurrent edits/research from overwriting each other. A research result that conflicts with an edit is retained in the server audit table but not applied to the updated thesis.
+Theses are shared by all visitors. Names identify submissions without adding accounts or ownership. Sequence numbers are allocated atomically per normalized author name and are not reused after deletion. Old submissions without a collected name display Unnamed until edited.
+
+`OPENAI_API_KEY` is a server runtime secret. It is never returned to the browser or included in a client bundle. The $12 app allowance reserves $0.25 per research attempt and $0.01 per input-validation attempt. Reservations are kept after failures because requests may incur cost. Research has a one-minute global cooldown and a three-minute stale-lock expiry. The usage control shows estimated charges, allocated allowance, and conservatively estimated remaining research runs including their input checks.
+
+Estimated charges use $0.05/M input tokens, $0.40/M output tokens and $0.01 per returned web call. The OpenAI project billing limit is authoritative; interrupted calls can have unreported charges. [GPT-5 nano](https://developers.openai.com/api/docs/models/gpt-5-nano), [web search](https://developers.openai.com/api/docs/guides/tools-web-search), [pricing](https://developers.openai.com/api/docs/pricing).
+
+Versions prevent concurrent edits and research from overwriting each other. Deleted thesis records disappear immediately; cost-accounting rows remain to preserve the allowance. There are no background jobs or automatic research runs.
 
 ## Develop
 
-Node 22.13+ (Node 25 used during development).
+Use Node 22.13+ (Node 25 used for tests). Local and hosted databases are separate.
 
 ```sh
 npm run install:ci
 npm run build
 node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0000_careful_aaron_stack.sql
+node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0001_narrow_major_mapleleaf.sql
 npm run dev -- --port 3000
 ```
 
-Apply the migration once per fresh local database. Hosted migrations are applied by Sites. Local and hosted data are separate. You can add the three clearly labelled examples using the empty workspace's **Load example theses** button.
-
-Checks:
+Apply each migration once. Sites applies pending migrations on deployment. Provide a server-only local API key through ignored environment configuration when testing paid calls. Do not commit keys.
 
 ```sh
 npm run typecheck
@@ -57,8 +54,4 @@ npm test
 npm run build
 ```
 
-`scripts/test-openai.mjs` is an optional paid smoke test. It takes the key via hidden stdin and performs a bounded real API request. Never pass the key as a shell argument.
-
-## Prototype limits
-
-24 checks per thesis and 12 argument groups. Web research may not cover every check in one bounded run; missing evidence stays unclear. Private Quant backtests and experiments need manual checks. No price execution, automated P&L, push alerts, scheduled jobs, or quantitative backtest verification. The sample theses are illustrative hypotheses, not trade recommendations.
+Limits: 24 subtheses, 12 groups, 6 subtheses per group, and 20,000 input characters. Public research cannot verify private data; Manual checks accept a trader's recorded observation. No live price feed, execution or P&L engine.

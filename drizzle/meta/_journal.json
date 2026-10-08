@@ -8,6 +8,13 @@
       "when": 1791360899167,
       "tag": "0000_careful_aaron_stack",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1791395148438,
+      "tag": "0001_narrow_major_mapleleaf",
+      "breakpoints": true
     }
   ]
 }

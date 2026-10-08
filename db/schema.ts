@@ -14,3 +14,7 @@ export const runs = sqliteTable("research_runs", {
   estimatedCost: real("estimated_cost"),
   result: text("result"),
 });
+export const authorSequences = sqliteTable('author_sequences', {
+  authorKey: text('author_key').primaryKey(),
+  value: integer('value').notNull(),
+});
