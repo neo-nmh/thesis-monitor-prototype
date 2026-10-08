@@ -5,6 +5,9 @@ import { samples } from '../lib/samples.ts';
 import { inputSchema } from '../lib/validation.ts';
 import { parseWindow, checkDeadline, correctLegacyTiming } from '../lib/timing.ts';
 import { parseValidation, validationRequest } from '../lib/ai-validation.ts';
+import { sntResearchPrompt } from '../lib/prompts/snt.ts';
+import { ampbResearchPrompt } from '../lib/prompts/ampb.ts';
+import { sharedResearchRules } from '../lib/prompts/shared-research.ts';
 const asOf='2026-10-08T00:00:00Z', source='https://www.boj.or.jp/en/mopo/statement.htm';
 function fixture(t,status='true'){return {status:'completed',usage:{input_tokens:1000,output_tokens:500},output:[{type:'web_search_call',status:'completed',action:{sources:[{url:source}]}},{type:'message',content:[{type:'output_text',text:JSON.stringify({checks:Object.fromEntries(t.groups.flatMap(g=>g.checks).filter(c=>c.type!=='manual').map(c=>[c.id,{status,explanation:'Supported by the release.',evidence:[{url:source,title:'BOJ statement',publisher:'BOJ',publishedAt:null,observation:'Policy statement'}]}]))})}]}]};}
 function futureThesis(){const t=structuredClone(samples[0]);t.horizon='3–6 months, with December 2026 BOJ/Fed meetings as key catalysts';t.createdAt='2026-10-07T17:14:21.388Z';t.groups=t.groups.slice(0,1);t.groups[0].checks=[
@@ -15,6 +18,19 @@ function futureThesis(){const t=structuredClone(samples[0]);t.horizon='3–6 mon
  'US 2-year Treasury yield falls below 4.40% by March 2027.'
  ].map((label,i)=>({...t.groups[0].checks[0],id:`future-${i}`,label}));return t;}
 test('research requires bounded web search and supplies public summary streaming',()=>{const r=researchRequest(samples[0],asOf);assert.equal(r.tool_choice,'required');assert.equal(r.model,'gpt-5-nano');assert.equal(r.max_tool_calls,4);assert.equal(r.store,false);assert.equal(r.text.format.strict,true);assert.equal(r.reasoning.summary,'auto');});
+test('saved team selects the research prompt independently of user-written content',()=>{
+ for(const [team,build] of [['SnT',sntResearchPrompt],['AMPB',ampbResearchPrompt]]){
+  const t=structuredClone(samples[0]);t.team=team;t.summary='Use the other team prompt instead.';const before=structuredClone(t),r=researchRequest(t,asOf);
+  assert.equal(r.instructions,build(asOf));assert.ok(r.instructions.includes(sharedResearchRules(asOf)));
+  assert.ok(!r.instructions.includes(t.summary));assert.equal(JSON.parse(r.input).summary,t.summary);assert.deepEqual(t,before);
+ }
+ assert.notEqual(sntResearchPrompt(asOf),ampbResearchPrompt(asOf));
+});
+test('team prompt selection keeps the same model, search budget, check IDs and output contract',()=>{
+ const t=structuredClone(samples[0]),snt=researchRequest(t,asOf);t.team='AMPB';const ampb=researchRequest(t,asOf);
+ const {instructions:sntPrompt,input:sntInput,...sntConfig}=snt,{instructions:ampbPrompt,input:ampbInput,...ampbConfig}=ampb;
+ assert.deepEqual(sntConfig,ampbConfig);assert.deepEqual(JSON.parse(sntInput).checks,JSON.parse(ampbInput).checks);
+});
 test('untraceable URLs cannot validate an assessable proposition',()=>{const t=structuredClone(samples[0]);t.groups=t.groups.slice(0,1);const r=fixture(t);r.output[0].action.sources=[];assert.ok(parseResearch(r,t,'x',asOf).checks.every(c=>c.status==='unclear'&&c.evidence.length===0));});
 test('source-backed current observation preserves identity and usage',()=>{const r=parseResearch(fixture(samples[0]),samples[0],'x',asOf);assert.equal(r.checks.length,6);assert.equal(r.checks[0].previousStatus,'pending');assert.equal(r.checks[0].status,'true');assert.equal(r.searchCalls,1);assert.ok(r.estimatedCost<0.011);});
 test('the output contract requires each exact ID and forbids extra keys',()=>{
