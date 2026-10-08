@@ -6,7 +6,7 @@ import { inputSchema } from '../lib/validation.ts';
 import { parseWindow, checkDeadline, correctLegacyTiming } from '../lib/timing.ts';
 import { parseValidation, validationRequest } from '../lib/ai-validation.ts';
 const asOf='2026-10-08T00:00:00Z', source='https://www.boj.or.jp/en/mopo/statement.htm';
-function fixture(t,status='true'){return {status:'completed',usage:{input_tokens:1000,output_tokens:500},output:[{type:'web_search_call',status:'completed',action:{sources:[{url:source}]}},{type:'message',content:[{type:'output_text',text:JSON.stringify({checks:t.groups.flatMap(g=>g.checks).filter(c=>c.type!=='manual').map(c=>({id:c.id,status,explanation:'Supported by the release.',evidence:[{url:source,title:'BOJ statement',publisher:'BOJ',publishedAt:null,observation:'Policy statement'}]}))})}]}]};}
+function fixture(t,status='true'){return {status:'completed',usage:{input_tokens:1000,output_tokens:500},output:[{type:'web_search_call',status:'completed',action:{sources:[{url:source}]}},{type:'message',content:[{type:'output_text',text:JSON.stringify({checks:Object.fromEntries(t.groups.flatMap(g=>g.checks).filter(c=>c.type!=='manual').map(c=>[c.id,{status,explanation:'Supported by the release.',evidence:[{url:source,title:'BOJ statement',publisher:'BOJ',publishedAt:null,observation:'Policy statement'}]}]))})}]}]};}
 function futureThesis(){const t=structuredClone(samples[0]);t.horizon='3–6 months, with December 2026 BOJ/Fed meetings as key catalysts';t.createdAt='2026-10-07T17:14:21.388Z';t.groups=t.groups.slice(0,1);t.groups[0].checks=[
  'BOJ policy rate reaches ≥1.50% by December 2026.',
  'Fed policy rate remains ≤4.00% through December 2026.',
@@ -17,11 +17,34 @@ function futureThesis(){const t=structuredClone(samples[0]);t.horizon='3–6 mon
 test('research requires bounded web search and supplies public summary streaming',()=>{const r=researchRequest(samples[0],asOf);assert.equal(r.tool_choice,'required');assert.equal(r.model,'gpt-5-nano');assert.equal(r.max_tool_calls,4);assert.equal(r.store,false);assert.equal(r.text.format.strict,true);assert.equal(r.reasoning.summary,'auto');});
 test('untraceable URLs cannot validate an assessable proposition',()=>{const t=structuredClone(samples[0]);t.groups=t.groups.slice(0,1);const r=fixture(t);r.output[0].action.sources=[];assert.ok(parseResearch(r,t,'x',asOf).checks.every(c=>c.status==='unclear'&&c.evidence.length===0));});
 test('source-backed current observation preserves identity and usage',()=>{const r=parseResearch(fixture(samples[0]),samples[0],'x',asOf);assert.equal(r.checks.length,6);assert.equal(r.checks[0].previousStatus,'pending');assert.equal(r.checks[0].status,'true');assert.equal(r.searchCalls,1);assert.ok(r.estimatedCost<0.011);});
-test('missing, duplicate, and extra check IDs fail closed',()=>{for(const mode of ['missing','duplicate','extra']){const r=fixture(samples[0]),part=r.output[1].content[0],p=JSON.parse(part.text);if(mode==='missing')p.checks.pop();if(mode==='duplicate')p.checks[1].id=p.checks[0].id;if(mode==='extra')p.checks[0].id='invented';part.text=JSON.stringify(p);assert.throws(()=>parseResearch(r,samples[0],'x',asOf),/mismatched/);}});
+test('the output contract requires each exact ID and forbids extra keys',()=>{
+ const t=structuredClone(samples[1]);t.groups[0].checks[0].type='manual';
+ const schema=researchRequest(t,asOf).text.format.schema,checks=schema.properties.checks;
+ const ids=t.groups.flatMap(g=>g.checks).filter(c=>c.type!=='manual').map(c=>c.id);
+ assert.equal(checks.type,'object');assert.deepEqual(checks.required,ids);assert.deepEqual(Object.keys(checks.properties),ids);assert.equal(checks.additionalProperties,false);
+ for(const id of ids){assert.equal(checks.properties[id].additionalProperties,false);assert.deepEqual(checks.properties[id].required,['status','explanation','evidence']);assert.ok(!checks.properties[id].properties.id);}
+});
+test('missing and invented results fail closed without changing the thesis',()=>{
+ for(const mode of ['missing','extra','replaced']){const t=structuredClone(samples[1]),before=structuredClone(t),r=fixture(t),part=r.output[1].content[0],p=JSON.parse(part.text),key=Object.keys(p.checks)[0];
+  if(mode!=='missing')p.checks.invented=p.checks[key];if(mode!=='extra')delete p.checks[key];part.text=JSON.stringify(p);
+  assert.throws(()=>parseResearch(r,t,'x',asOf),/mismatched checks/);assert.deepEqual(t,before);
+ }
+});
+test('old array format with duplicated identifiers is rejected',()=>{
+ const r=fixture(samples[1]),part=r.output[1].content[0],p=JSON.parse(part.text),[id,value]=Object.entries(p.checks)[0];
+ p.checks=[{id,...value},{id,...value}];part.text=JSON.stringify(p);assert.throws(()=>parseResearch(r,samples[1],'x',asOf));
+});
+test('result mapping uses required IDs, preserves thesis order, and excludes manual checks',()=>{
+ const t=structuredClone(samples[1]);t.groups[0].checks[0].type='manual';const before=structuredClone(t),r=fixture(t),part=r.output[1].content[0],p=JSON.parse(part.text);
+ p.checks=Object.fromEntries(Object.entries(p.checks).reverse().map(([id,c])=>[id,{...c,explanation:id}]));part.text=JSON.stringify(p);
+ const expected=t.groups.flatMap(g=>g.checks).filter(c=>c.type!=='manual'),review=parseResearch(r,t,'x',asOf);
+ assert.deepEqual(review.checks.map(c=>c.id),expected.map(c=>c.id));assert.deepEqual(review.checks.map(c=>c.label),expected.map(c=>c.label));
+ assert.equal(review.checks[0].explanation,expected[0].id);assert.deepEqual(t,before);
+});
 test('incomplete output and skipped search cannot update checks',()=>{const r=fixture(samples[0]);r.status='incomplete';assert.throws(()=>parseResearch(r,samples[0],'x',asOf),/did not finish/);r.status='completed';r.output.shift();assert.throws(()=>parseResearch(r,samples[0],'x',asOf),/No completed/);});
 test('exact USDJPY regression: every future check remains pending for every model verdict',()=>{const t=futureThesis();for(const verdict of ['true','false','unclear','pending']){const r=parseResearch(fixture(t,verdict),t,'x',asOf);assert.ok(r.checks.every(c=>c.status==='pending'),JSON.stringify(r.checks));}const input=JSON.parse(researchRequest(t,asOf).input);assert.ok(input.checks.every(c=>c.pendingRequired));assert.equal(input.checks[2].deadline,'2027-03-31T23:59:59.999Z');});
 test('future deadlines stay pending even without sources',()=>{const t=futureThesis(),r=fixture(t);r.output[0].action.sources=[];assert.ok(parseResearch(r,t,'x',asOf).checks.every(c=>c.status==='pending'));});
-test('expired deadlines become assessable on new research',()=>{const t=futureThesis(),raw=fixture(t);const part=raw.output[1].content[0],data=JSON.parse(part.text);data.checks.forEach(c=>c.evidence[0].publishedAt='2027-03-31');part.text=JSON.stringify(data);const r=parseResearch(raw,t,'x','2027-04-01T00:00:00Z');assert.ok(r.checks.every(c=>c.status==='true'));});
+test('expired deadlines become assessable on new research',()=>{const t=futureThesis(),raw=fixture(t);const part=raw.output[1].content[0],data=JSON.parse(part.text);Object.values(data.checks).forEach(c=>c.evidence[0].publishedAt='2027-03-31');part.text=JSON.stringify(data);const r=parseResearch(raw,t,'x','2027-04-01T00:00:00Z');assert.ok(r.checks.every(c=>c.status==='true'));});
 test('legacy premature results are corrected without altering the original words',()=>{const t=futureThesis();for(const c of t.groups[0].checks){c.status='false';c.evaluatedAt=asOf;}const fixed=correctLegacyTiming(t);assert.ok(fixed.groups[0].checks.every(c=>c.status==='pending'));assert.deepEqual(fixed.groups[0].checks.map(c=>c.label),t.groups[0].checks.map(c=>c.label));assert.equal(t.groups[0].checks[0].status,'false');});
 test('latest observations do not inherit a future trade horizon',()=>{const t=futureThesis(),g=t.groups[0];g.checks[0].label='The latest Japanese wage release shows positive year-on-year growth.';assert.equal(checkDeadline(t,g,g.checks[0]),null);assert.equal(parseResearch(fixture(t),t,'x',asOf).checks[0].status,'true');});
 test('date parsing handles month, exact day, quarter, relative range and historical comparison',()=>{for(const [s,out] of [['by March 2027','2027-03-31'],['through 2027-03-15','2027-03-15'],['by 15 March 2027','2027-03-15'],['by Q1 2027','2027-03-31'],['next 3–6 months','2027-04-07']])assert.equal(parseWindow(s,'2026-10-07T00:00:00Z')?.toISOString().slice(0,10),out);assert.equal(parseWindow('Revenue grew versus March 2026.','2026-10-07T00:00:00Z'),null);});
