@@ -21,3 +21,8 @@ npm run build
 
 OpenAI API key is needed.
 
+Create .dev.vars in the project root.
+
+```sh
+OPENAI_API_KEY=sk-your-api-key-here
+```
