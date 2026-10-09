@@ -1,5 +1,5 @@
-import { sntResearchPrompt } from './prompts/snt.ts';
-import { ampbResearchPrompt } from './prompts/ampb.ts';
+import { cardPrompts } from './prompts/index.ts';
+import { scopeToCard } from './card-research.ts';
 import type { CheckStatus, Evidence, Review, Thesis, ResearchProgress } from './types';
 import { timingGuard, checkDeadline } from './timing.ts';
 import { z } from 'zod';
@@ -12,11 +12,12 @@ export const object=(properties:Record<string,unknown>)=>({type:'object',propert
 const checkOutputSchema=object({status:{type:'string',enum:['pending','true','false','unclear']},explanation:string,evidence:{type:'array',items:object({title:string,url:string,publisher:string,publishedAt:{type:['string','null']},observation:string})}});
 // Required object keys enforce one result per exact ID; an array cannot enforce this.
 export const outputSchema=(ids:string[])=>object({checks:object(Object.fromEntries(ids.map(id=>[id,checkOutputSchema])))});
-export function researchRequest(thesis:Thesis,asOf=new Date().toISOString()){
+export function researchRequest(fullThesis:Thesis,groupId:string,asOf=new Date().toISOString()){
+ const thesis=scopeToCard(fullThesis,groupId);
  const checks=thesis.groups.flatMap(g=>g.checks.filter(c=>c.type!=='manual').map(c=>({id:c.id,label:c.label,type:c.type,deadline:checkDeadline(thesis,g,c)?.toISOString()||c.deadline,pendingRequired:!!timingGuard(thesis,g,c,asOf),groupKind:g.kind,argument:g.claim,context:g.context,window:g.window,marketView:g.marketView,variantView:g.variantView})));
  return {model:MODEL,store:false,reasoning:{effort:'low',summary:'auto'},max_output_tokens:8000,max_tool_calls:4,parallel_tool_calls:false,
  tools:[{type:'web_search',search_context_size:'low',external_web_access:true}],tool_choice:'required',include:['web_search_call.action.sources'],
- instructions:thesis.team==='SnT'?sntResearchPrompt(asOf):ampbResearchPrompt(asOf),
+ instructions:cardPrompts[thesis.team][thesis.groups[0].kind](asOf),
  input:JSON.stringify({thesisCreatedAt:thesis.createdAt,reviewAsOf:asOf,title:thesis.title,instrument:thesis.instrument,team:thesis.team,desk:thesis.desk,direction:thesis.direction,horizon:thesis.horizon,summary:thesis.summary,valuation:thesis.valuation,tradePlan:thesis.tradePlan,checks}),
  text:{format:{type:'json_schema',name:'thesis_review',strict:true,schema:outputSchema(checks.map(c=>c.id))}}};
 }

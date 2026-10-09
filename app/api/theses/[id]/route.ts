@@ -1,6 +1,7 @@
 import { body, db, errorResponse, getThesis, json, sameOrigin, saveThesis, authorNumber } from '@/lib/server';
 import { inputSchema } from '@/lib/validation';
 import { validateInput } from '@/lib/ai-server';
+import { fallbackSummary } from '@/lib/monitor-summary';
 import type { CheckStatus } from '@/lib/types';
 export async function PATCH(req:Request,ctx:{params:Promise<{id:string}>}){
  if(!sameOrigin(req))return json({error:'Request origin is not allowed.'},403);
@@ -13,6 +14,7 @@ export async function PATCH(req:Request,ctx:{params:Promise<{id:string}>}){
   const number=t.author.trim().toLowerCase()===p.author.trim().toLowerCase()?t.authorNumber:await authorNumber(p.author);
   Object.assign(t,p,{authorNumber:number,groups:p.groups.map(g=>({...g,checks:g.checks.map(c=>({...c,status:'pending',explanation:'',evidence:[]}))}))});
  }else throw new Error('Unknown action.');
+ t.monitorSummary=b.action==='manual'?{text:fallbackSummary(t),createdAt:now}:undefined;
  t.updatedAt=now;if(!await saveThesis(t,t.version))return json({error:'Another update arrived. Refresh and try again.'},409);return json({...t,version:t.version+1});
  }catch(e){return errorResponse(e);}
 }

@@ -1,14 +1,10 @@
+import { reserveBudget } from './research-budget';
 import { db, secret } from './server';
 import { validationRequest, parseValidation } from './ai-validation';
 import { responseCost } from './research';
 import type { ThesisInput } from './validation';
-export async function reserveRun(thesisId:string,kind:'research'|'validation'){
- const id=crypto.randomUUID(),now=new Date().toISOString(),amount=kind==='research'?0.25:0.01;
- const extra=kind==='research'?`AND NOT EXISTS (SELECT 1 FROM research_runs WHERE status='running' AND created_at > ?) AND NOT EXISTS (SELECT 1 FROM research_runs WHERE reserved >= 0.25 AND created_at > ?)`:`AND NOT EXISTS (SELECT 1 FROM research_runs WHERE status='validating' AND created_at > ?)`;
- const args=kind==='research'?[new Date(Date.now()-180000).toISOString(),new Date(Date.now()-60000).toISOString()]:[new Date(Date.now()-60000).toISOString()];
- const r=await db().prepare(`INSERT INTO research_runs (id,thesis_id,created_at,status,reserved) SELECT ?,?,?,?,? WHERE (SELECT COALESCE(SUM(reserved),0) FROM research_runs) + ? <= 12 ${extra}`).bind(id,thesisId,now,kind==='research'?'running':'validating',amount,amount,...args).run();
- if(!r.meta.changes)throw new Error(kind==='research'?'Research is running, the one-minute cooldown is active, or the usage limit has been reached.':'An input check is running or the usage limit has been reached. Try again shortly.');
- return id;
+export async function reserveRun(thesisId:string,kind:'research'|'validation',groupId?:string){
+ return reserveBudget(db(),thesisId,kind,groupId);
 }
 export async function openAI(request:unknown,stream=false){
  const key=secret();if(!key)throw new Error('OpenAI is not configured on the server.');
